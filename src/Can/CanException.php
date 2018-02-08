@@ -1,6 +1,6 @@
 <?php
 
-namespace jjharr\Can;
+namespace interactivid\Can;
 
 class CanException extends \Exception {
 

@@ -3,7 +3,7 @@
  * This is the config file for the Can roles and permissions package
  *
  * @license MIT
- * @package jjharr\Can
+ * @package interactivid\Can
  */
 return array(
 

@@ -2,7 +2,7 @@
 
 Installation
 ----------------
-composer require "jjharr/can" "1.0.*@dev"
+composer require "interactivid/can" "1.0.*@dev"
 add 'Can\CanServiceProvider' to service provider array in config/app.php
 php artisan vendor:publish
 php artisan can:migration
