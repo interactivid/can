@@ -23,7 +23,7 @@
   },
   "autoload": {
     "psr-4": {
-      "jjharr\\Can\\": "src/Can"
+      "interactivid\\Can\\": "src/Can"
     }
   },
   "extra": {
