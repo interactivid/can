@@ -33,6 +33,7 @@ class CanMigrationsCommand extends Command {
 
 		return [
 			'roleTable'          => Config::get('can.role_table'),
+			'roleCustomTable'    => Config::get('can.role_custom_table'),
 			'permissionTable'    => Config::get('can.permission_table'),
 			'rolePermissionTable' => Config::get('can.role_permission_table'),
 			'userRoleTable'       => Config::get('can.user_role_table'),
@@ -47,6 +48,7 @@ class CanMigrationsCommand extends Command {
 		$migrations = [
 			'resources/migrations.php' => '_create_can_tables.php',
 			'resources/migrations2.php' => '_add_group_ids_to_can_tables.php',
+			'resources/migrations3.php' => '_create_roles_custom_table.php',
 		];
 
 		extract($this->params());
