@@ -168,7 +168,7 @@ trait Can {
 		{
 			DB::table(Config::get('can.user_permission_table'))
 				->where('user_id', $this->id)
-				->whereIn('permissions_slug',$uniqueSlugs)
+				->whereIn('permissions_slug', $uniqueSlugs)
 				->delete();
 
 			$this->invalidatePermissionCache();
@@ -219,7 +219,7 @@ trait Can {
 		// todo - allow a comma-separated list?
 		$affected = DB::table(Config::get('can.user_permission_table'))
 			->where('user_id', $this->id)
-			->where('group_id', $this->getGroupId());
+			->where('group_id', $this->getGroupId())
 			->where('permissions_slug', $permissionSlug)
 			->where('added_on_user', 1)
 			->delete();
@@ -434,7 +434,7 @@ trait Can {
 
 		$userClass = Config::get('auth.model');
 
-		if (method_exists($userClass, 'getCurrentGroup')
+		if (method_exists($userClass, 'getCurrentGroup'))
 		{
 			$group = $userClass->getCurrentGroup();
 			$this->groupId = isset($group->id) ? $group->id : 0;
