@@ -49,6 +49,7 @@ class CanMigrationsCommand extends Command {
 			'resources/migrations.php' => '_create_can_tables.php',
 			'resources/migrations2.php' => '_add_group_ids_to_can_tables.php',
 			'resources/migrations3.php' => '_create_roles_custom_table.php',
+			'resources/migrations4.php' => '_change_primary_key_in_can_tables.php',
 		];
 
 		extract($this->params());

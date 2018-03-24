@@ -24,6 +24,8 @@ trait Can {
 	 */
 	private $groupId;
 
+	private $normalizedGroupAndParents;
+
 	/**
 	 * Accepts a single role slug, and attaches that role to the user. Does nothing
 	 * if the user is already attached to the role.
@@ -34,15 +36,26 @@ trait Can {
 	 */
 	public function attachRole($roleSlug)
 	{
+		$isCustomRole = false;
+		$groupId = $this->getGroupId();
 		$role = Role::single($roleSlug);
-		if(empty($role))
+		if (empty($role))
 		{
-			throw new CanException("There is no role with the slug: $roleSlug");
+			echo 'Group: ' . $groupId . ' ';
+			$groupId = $this->getGroupId();
+			$role = RoleCustom::single($roleSlug, ['group_id' => $groupId]);
+			print_r($role);
+			if (empty($role))
+			{
+				throw new CanException("There is no role with the slug: $roleSlug");
+			}
+			else
+				$isCustomRole = true;
 		}
 
 		$timeStr = Carbon::now()->toDateTimeString();
 
-		if($this->is($roleSlug))
+		if ($this->is($roleSlug))
 		{
 			return $role;
 		}
@@ -50,7 +63,7 @@ trait Can {
 		DB::table(Config::get('can.user_role_table'))->insert([
 			'roles_slug' => $roleSlug,
 			'user_id' => $this->id,
-			'group_id' => $this->getGroupId(),
+			'group_id' => $groupId,
 			'created_at' => $timeStr,
 			'updated_at' => $timeStr
 		]);
@@ -243,7 +256,12 @@ trait Can {
 	public function is($roles)
 	{
 		// todo - possibly refactor to use getRoles? then have detachRole use this?
-		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->where('group_id', $this->getGroupId());
+
+		// Cascading roles need to be accounted for, i.e. if a user has a role somewhere in a parent, that role should cascade
+		// down to the current group.
+		$groupIds = $this->normalizeGroupAndParents($this->getGroupId());
+		
+		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->whereIn('group_id', $groupIds);
 
 		$container = new SlugContainer($roles);
 		$query = $container->buildSlugQuery($query, 'roles_slug');
@@ -432,14 +450,43 @@ trait Can {
 
 		$this->groupId = 0;
 
-		$userClass = Config::get('auth.model');
+		$userClass = Config::get('auth.providers.users.model');
 
 		if (method_exists($userClass, 'getCurrentGroup'))
 		{
-			$group = $userClass->getCurrentGroup();
+			$group = $userClass::getCurrentGroup();
 			$this->groupId = isset($group->id) ? $group->id : 0;
 		}
 
 		return $this->groupId;
+	}
+
+
+	/**
+	 * Retrieve a single-level array of the group and its parents. This relies on the InteractiVid Group model.
+	 * Nothing will be returned if this model doesn't exist.
+	 * TODO: Bring the group management into interactivid/can?
+	 */
+	protected function normalizeGroupAndParents($groupId = null)
+	{
+		if ($groupId === null)
+		{
+			$groupId = $this->getCurrentGroup()->id;
+		}
+
+		// Check if we've already retrieved the normalized group and parents and stored it.
+		if (isset($this->normalizedGroupAndParents[$groupId]))
+			return $this->normalizedGroupAndParents[$groupId];
+
+		$groupClass = 'Demovisor\Models\Group';
+		$groupIds = [$groupId];
+		if (method_exists($groupClass, 'normalizeParents'))
+		{
+			$group = $groupClass::where('id', $groupId)->first();
+			$parents = $group->normalizeParents();
+		}
+
+		$this->normalizedGroupAndParents[$groupId] = array_merge($groupIds, array_keys($parents));
+		return $this->normalizedGroupAndParents[$groupId];
 	}
 }

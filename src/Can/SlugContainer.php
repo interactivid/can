@@ -90,7 +90,7 @@ class SlugContainer {
 		return $this->parsed['fullyQualified'];
 	}
 
-	public function buildSlugQuery(Builder $query, $slugColumn='slug')
+	public function buildSlugQuery(Builder $query, $slugColumn, $params = [])
 	{
 		if(!($this->hasFullyQualified() || $this->hasPartiallyQualified()))
 		{
@@ -117,6 +117,11 @@ class SlugContainer {
 			{
 				$query = $query->orWhere($slugColumn,'like',$partiallyQualified[$i]);
 			}
+		}
+
+		foreach ($params as $field => $value)
+		{
+			$query = $query->where($field, '=', $value);
 		}
 
 		return $query;
