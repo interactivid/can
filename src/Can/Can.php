@@ -26,6 +26,8 @@ trait Can {
 
 	private $normalizedGroupAndParents;
 
+	private $rootGroup;
+
 	/**
 	 * Accepts a single role slug, and attaches that role to the user. Does nothing
 	 * if the user is already attached to the role.
@@ -42,8 +44,12 @@ trait Can {
 		if (empty($role))
 		{
 			echo 'Group: ' . $groupId . ' ';
-			$groupId = $this->getGroupId();
-			$role = RoleCustom::single($roleSlug, ['group_id' => $groupId]);
+			$rootGroup = $this->getRootGroup($groupId);
+			echo 'Root: ' . $rootGroup;
+
+			// All custom roles are defined on the root group, so make sure we're checking the right group.
+			$role = RoleCustom::single($roleSlug, ['group_id' => $this->getRootGroup($groupId)]);
+
 			print_r($role);
 			if (empty($role))
 			{
@@ -55,6 +61,9 @@ trait Can {
 
 		$timeStr = Carbon::now()->toDateTimeString();
 
+		// Note that if the user belongs to the role in a parent group, their role won't be added to the subgroup.
+		// If they're added to a subgroup, then a parent group, they'll have two records in the group chain.
+		// We may want to reconsider this design?
 		if ($this->is($roleSlug))
 		{
 			return $role;
@@ -118,7 +127,7 @@ trait Can {
 		// make sure the role to detach is among the attached roles
 		$allRoleSlugs = $this->slugsFor( $this->getRoles() );
 
-		if(!in_array($roleSlug, $allRoleSlugs, TRUE))
+		if (!in_array($roleSlug, $allRoleSlugs, TRUE))
 		{
 			return false;
 		}
@@ -260,7 +269,7 @@ trait Can {
 		// Cascading roles need to be accounted for, i.e. if a user has a role somewhere in a parent, that role should cascade
 		// down to the current group.
 		$groupIds = $this->normalizeGroupAndParents($this->getGroupId());
-		
+
 		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->whereIn('group_id', $groupIds);
 
 		$container = new SlugContainer($roles);
@@ -470,9 +479,7 @@ trait Can {
 	protected function normalizeGroupAndParents($groupId = null)
 	{
 		if ($groupId === null)
-		{
 			$groupId = $this->getCurrentGroup()->id;
-		}
 
 		// Check if we've already retrieved the normalized group and parents and stored it.
 		if (isset($this->normalizedGroupAndParents[$groupId]))
@@ -480,13 +487,42 @@ trait Can {
 
 		$groupClass = 'Demovisor\Models\Group';
 		$groupIds = [$groupId];
+		$parents = [];
 		if (method_exists($groupClass, 'normalizeParents'))
 		{
 			$group = $groupClass::where('id', $groupId)->first();
-			$parents = $group->normalizeParents();
-		}
+			if ($group)
+				$parents = $group->normalizeParents();
 
-		$this->normalizedGroupAndParents[$groupId] = array_merge($groupIds, array_keys($parents));
-		return $this->normalizedGroupAndParents[$groupId];
+			$this->normalizedGroupAndParents[$groupId] = array_merge($groupIds, array_keys($parents));
+			return $this->normalizedGroupAndParents[$groupId];
+		}
+		return null;
+	}
+
+	protected function getRootGroup($groupId = null)
+	{
+		if ($groupId === null)
+			$groupId = $this->getCurrentGroup()->id;
+
+		echo 'group';
+		print_r($groupId);
+
+		// Check if we've already retrieved the root group and stored it.
+		if (isset($this->rootGroup[$groupId]))
+			return $this->rootGroup[$groupId];
+
+		$groupClass = 'Demovisor\Models\Group';
+		$groupIds = [$groupId];
+		if (method_exists($groupClass, 'getRootGroup'))
+		{
+			$group = $groupClass::where('id', $groupId)->first();
+			if ($group)
+			{
+				$this->rootGroup[$groupId] = $group->getRootGroup();
+				return $this->rootGroup[$groupId];
+			}
+		}
+		return null;
 	}
 }
