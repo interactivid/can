@@ -38,25 +38,20 @@ trait Can {
 	 */
 	public function attachRole($roleSlug)
 	{
-		$isCustomRole = false;
 		$groupId = $this->getGroupId();
+		echo $groupId;
 		$role = Role::single($roleSlug);
 		if (empty($role))
 		{
-			echo 'Group: ' . $groupId . ' ';
 			$rootGroup = $this->getRootGroup($groupId);
-			echo 'Root: ' . $rootGroup;
 
 			// All custom roles are defined on the root group, so make sure we're checking the right group.
 			$role = RoleCustom::single($roleSlug, ['group_id' => $this->getRootGroup($groupId)]);
 
-			print_r($role);
 			if (empty($role))
 			{
 				throw new CanException("There is no role with the slug: $roleSlug");
 			}
-			else
-				$isCustomRole = true;
 		}
 
 		$timeStr = Carbon::now()->toDateTimeString();
@@ -127,6 +122,8 @@ trait Can {
 		// make sure the role to detach is among the attached roles
 		$allRoleSlugs = $this->slugsFor( $this->getRoles() );
 
+		print_r($allRoleSlugs);
+
 		if (!in_array($roleSlug, $allRoleSlugs, TRUE))
 		{
 			return false;
@@ -158,9 +155,11 @@ trait Can {
 
 	protected function doDetachRole($roleSlug)
 	{
+		echo $roleSlug;
 		DB::table(Config::get('can.user_role_table'))
 			->where('user_id', $this->id)
 			->where('roles_slug', $roleSlug)
+			->where('group_id', $this->getGroupId())
 			->delete();
 
 		$this->invalidateRoleCache();
@@ -306,12 +305,13 @@ trait Can {
 	 */
 	public function getRoles()
 	{
-		if(!empty($this->userRoles))
+		if (!empty($this->userRoles))
 		{
 			return $this->userRoles;
 		}
 
 		$roleTable = Config::get('can.role_table');
+		$roleCustomTable = Config::get('.role_custom_table');
 		$userRoleTable = Config::get('can.user_role_table');
 
 		$queryParams = [
@@ -504,9 +504,6 @@ trait Can {
 	{
 		if ($groupId === null)
 			$groupId = $this->getCurrentGroup()->id;
-
-		echo 'group';
-		print_r($groupId);
 
 		// Check if we've already retrieved the root group and stored it.
 		if (isset($this->rootGroup[$groupId]))
