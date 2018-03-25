@@ -114,22 +114,23 @@ trait Can {
 	 * @return bool
 	 * @throws CanException
 	 */
-	public function detachRole($roleSlug)
+	public function detachRole($roleSlug, $groupId = null)
 	{
+		if ($groupId === null)
+			$groupId = $this->getCurrentGroup()->id;
+
 		// todo - does this weed out wildcards?
 		SlugContainer::validateOrDie($roleSlug, 'slug');
 
 		// make sure the role to detach is among the attached roles
-		$allRoleSlugs = $this->slugsFor( $this->getRoles() );
-
-		print_r($allRoleSlugs);
+		$allRoleSlugs = $this->slugsFor( $this->getRoles($groupId) );
 
 		if (!in_array($roleSlug, $allRoleSlugs, TRUE))
 		{
 			return false;
 		}
 
-		$this->doDetachRole($roleSlug);
+		$this->doDetachRole($roleSlug, $groupId);
 
 		$this->detachRolePermissions($roleSlug);
 
@@ -153,13 +154,12 @@ trait Can {
 		}, $rolesOrPermissions);
 	}
 
-	protected function doDetachRole($roleSlug)
+	protected function doDetachRole($roleSlug, $groupId)
 	{
-		echo $roleSlug;
 		DB::table(Config::get('can.user_role_table'))
 			->where('user_id', $this->id)
 			->where('roles_slug', $roleSlug)
-			->where('group_id', $this->getGroupId())
+			->where('group_id', $groupId)
 			->delete();
 
 		$this->invalidateRoleCache();
@@ -303,17 +303,20 @@ trait Can {
 	 *
 	 * @return array
 	 */
-	public function getRoles()
+	public function getRoles($groupId)
 	{
+//		if ($groupId === null)
+//			$groupId = $this->getCurrentGroup()->id;
+
 		if (!empty($this->userRoles))
 		{
 			return $this->userRoles;
 		}
 
 		$roleTable = Config::get('can.role_table');
-		$roleCustomTable = Config::get('.role_custom_table');
+		$roleCustomTable = Config::get('can.role_custom_table');
 		$userRoleTable = Config::get('can.user_role_table');
-
+/*
 		$queryParams = [
 			'joinKeyFirst' => $roleTable.'.slug',
 			'joinKeySecond' => $userRoleTable.'.roles_slug',
@@ -327,6 +330,35 @@ trait Can {
 					->where($queryParams['userIdKey'], '=', $queryParams['userId']);
 			})
 			->get([$roleTable.'.*']);
+
+		$sql = "SELECT r.slug, r.name, r.description, ur.group_id
+				FROM " . $roleTable . " r
+				INNER JOIN " . $userRoleTable . " ur ON " . $roleTable . ".slug = " . $userRoleTable . ".roles_slug
+				WHERE " . $userRoleTable . ".user_id = ? AND group_id IN (?)
+				UNION
+				SELECT rc.slug, rc.name, rc.description, ur.group_id
+				FROM " . $roleCustomTable . " rc
+				INNER JOIN " . $userRoleTable . " ur ON " . $roleCustomTable . ".slug = " . $userRoleTable . ".roles_slug
+				WHERE " . $userRoleTable . ".user_id = ? AND group_id IN (?)
+		";
+*/
+		$groupAndParents = $this->normalizeGroupAndParents($groupId);
+
+		$primary = DB::table($roleTable)
+					->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
+					->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
+					->where($userRoleTable . '.user_id', '=', $this->id)
+					->whereIn($userRoleTable . '.group_id', $groupAndParents)
+					->get();
+
+		$custom = DB::table($roleCustomTable)
+					->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
+					->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
+					->where($userRoleTable . '.user_id', '=', $this->id)
+					->whereIn($userRoleTable . '.group_id', $groupAndParents)
+					->get();
+
+		$data = array_merge($primary, $custom);
 
 		$this->userRoles = array_map(function($v) {
 			return new Role((array) $v);
@@ -409,7 +441,7 @@ trait Can {
 		$rolePermissions = $role->getPermissions();
 		$rolePermissionSlugs = array_column($rolePermissions, 'slug');
 
-		// 2) get user roles, exluding the provided role if it's there
+		// 2) get user roles, excluding the provided role if it's there
 		$userRoles = array_filter($this->getRoles(), function($currRole) use($role) {
 			return $currRole->slug !== $role->slug;
 		});
