@@ -132,7 +132,7 @@ trait Can {
 
 		$this->doDetachRole($roleSlug, $groupId);
 
-		$this->detachRolePermissions($roleSlug);
+		$this->detachRolePermissions($roleSlug, $groupId);
 
 		return true;
 	}
@@ -175,20 +175,24 @@ trait Can {
 	 *
 	 * @throws CanException
 	 */
-	protected function detachRolePermissions($targetRoleSlug)
+	protected function detachRolePermissions($targetRoleSlug, $groupId)
 	{
 		$targetRole = Role::single($targetRoleSlug);
-		$uniqueRolePermissions = $this->uniquePermissionsForRole($targetRole);
+		if (!$targetRole)
+			$targetRole = RoleCustom::single($targetRoleSlug, ['group_id' => $this->getRootGroup($groupId)])
+
+		$uniqueRolePermissions = $this->uniquePermissionsForRole($targetRole, $groupId);
 
 		$uniqueSlugs = array_map(function($o) {
 			return $o->slug;
 		}, $uniqueRolePermissions);
 
 		// then delete what remains
-		if(count($uniqueRolePermissions) > 0)
+		if (count($uniqueRolePermissions) > 0)
 		{
 			DB::table(Config::get('can.user_permission_table'))
 				->where('user_id', $this->id)
+				->where('group_id', $groupId)
 				->whereIn('permissions_slug', $uniqueSlugs)
 				->delete();
 
@@ -210,7 +214,7 @@ trait Can {
 	{
 		$exists = DB::table(Config::get('can.permission_table'))->where('slug', $permissionSlug)->count();
 
-		if(count($exists))
+		if (count($exists))
 		{
 			DB::table(Config::get('can.user_permission_table'))->insert([
 				'user_id' => $this->id,
@@ -428,14 +432,14 @@ trait Can {
 
 	/**
 	 * Returns the permissions associated with the provided role that are:
-	 * a) not provided by any other role that is currently attached to the user and
-	 * b) have not been explicitly set on the user
+	 * a) not provided by any other role that is currently attached to the user in the group or any parent and
+	 * b) have not been explicitly set on the user in the group or any parent
 	 *
 	 * @param $role
 	 *
 	 * @return array
 	 */
-	private function uniquePermissionsForRole(Role $role)
+	private function uniquePermissionsForRole(Role $role, $groupId)
 	{
 		// 1) get role permissions
 		$rolePermissions = $role->getPermissions();
