@@ -50,13 +50,4 @@ return array(
 	|
 	*/
 	'user_permission_table' => 'pivot_users_permissions',
-
-	/*
-	| Can role_custom Table
-	|
-	| This is the role_custom table used by Can to save custom roles to the
-	| database.
-	|
-	*/
-	'role_custom_table' => 'roles_custom',
 );

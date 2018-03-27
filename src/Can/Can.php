@@ -20,11 +20,6 @@ trait Can {
 	private $userPermissions;
 
 	/**
-	 * The user's current group.
-	 */
-	private $groupId;
-
-	/**
 	 * Accepts a single role slug, and attaches that role to the user. Does nothing
 	 * if the user is already attached to the role.
 	 *
@@ -50,7 +45,6 @@ trait Can {
 		DB::table(Config::get('can.user_role_table'))->insert([
 			'roles_slug' => $roleSlug,
 			'user_id' => $this->id,
-			'group_id' => $this->getGroupId(),
 			'created_at' => $timeStr,
 			'updated_at' => $timeStr
 		]);
@@ -78,7 +72,6 @@ trait Can {
 				return [
 					'permissions_slug' => $v->slug,
 					'user_id' => $this->id,
-					'group_id' => $this->getGroupId(),
 					'created_at' => $timeStr,
 					'updated_at' => $timeStr
 				];
@@ -168,7 +161,7 @@ trait Can {
 		{
 			DB::table(Config::get('can.user_permission_table'))
 				->where('user_id', $this->id)
-				->whereIn('permissions_slug', $uniqueSlugs)
+				->whereIn('permissions_slug',$uniqueSlugs)
 				->delete();
 
 			$this->invalidatePermissionCache();
@@ -205,6 +198,7 @@ trait Can {
 		return false;
 	}
 
+
 	/**
 	 * Detach a permission from the user. This can only be called for permissions that were set explicitly
 	 * on the user using <code>attachPermission()</code> and not for implicit permissions that are
@@ -219,12 +213,11 @@ trait Can {
 		// todo - allow a comma-separated list?
 		$affected = DB::table(Config::get('can.user_permission_table'))
 			->where('user_id', $this->id)
-			->where('group_id', $this->getGroupId())
 			->where('permissions_slug', $permissionSlug)
 			->where('added_on_user', 1)
 			->delete();
 
-		if ($affected)
+		if($affected)
 		{
 			$this->invalidatePermissionCache();
 		}
@@ -243,7 +236,7 @@ trait Can {
 	public function is($roles)
 	{
 		// todo - possibly refactor to use getRoles? then have detachRole use this?
-		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->where('group_id', $this->getGroupId());
+		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id);
 
 		$container = new SlugContainer($roles);
 		$query = $container->buildSlugQuery($query, 'roles_slug');
@@ -261,9 +254,7 @@ trait Can {
 	 */
 	public function can($permissions)
 	{
-		$groupId = $this->getGroupId();
-
-		$query = DB::table(Config::get('can.user_permission_table'))->where('user_id', $this->id)->where('group_id', $this->getGroupId());
+		$query = DB::table(Config::get('can.user_permission_table'))->where('user_id',$this->id);
 
 		$container = new SlugContainer($permissions);
 		$query = $container->buildSlugQuery($query, 'permissions_slug');
@@ -319,13 +310,11 @@ trait Can {
 	 *
 	 * @return array
 	 */
-	public function getPermissions($filter = 'all')
+	public function getPermissions($filter='all')
 	{
-		$groupId = $this->getGroupId();
-
 		// the permission cache contains all the user's permissions, and does not contain enough information
 		// to execute the 'role' or 'explicit' filters.
-		if ($filter == 'all' && !empty($this->userPermissions))
+		if($filter == 'all' && !empty($this->userPermissions))
 		{
 			return $this->userPermissions;
 		}
@@ -421,25 +410,4 @@ trait Can {
 		$this->userPermissions = null;
 	}
 
-	/**
-	 * Return the group id. This is made for InteractiVid's own user/group middleware that gets stored in the session.
-	 * However, we're leaving room open to make it flexible enough to work with other user/group implementations.
-	 */
-	protected function getGroupId()
-	{
-		if (isset($this->groupId))
-			return $this->groupId;
-
-		$this->groupId = 0;
-
-		$userClass = Config::get('auth.model');
-
-		if (method_exists($userClass, 'getCurrentGroup'))
-		{
-			$group = $userClass->getCurrentGroup();
-			$this->groupId = isset($group->id) ? $group->id : 0;
-		}
-
-		return $this->groupId;
-	}
 }

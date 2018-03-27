@@ -42,7 +42,6 @@ class CreateCanTables extends Migration {
 			\$table->primary(['user_id', 'roles_slug']);
 		});
 		Schema::create('$userPermissionTable', function(Blueprint \$table)
-		
 		{
 			\$table->bigInteger('user_id');
 			\$table->string('permissions_slug', 255);

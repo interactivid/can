@@ -1,1 +1,1 @@
-This repository is not maintained
+Roles and permissions for Laravel 5. Developed for https://interactivid.com.
