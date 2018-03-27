@@ -18,8 +18,7 @@ class CanMigrationsCommand extends Command {
 		$this->info('Attempting to create Can migration tables ...');
 
 		try {
-			$this->writeMigrationFile();
-			$this->info("Migration created!");
+			$this->writeMigrationFiles();
 		} catch(\Exception $e) {
 			$this->error($e->getMessage());
 		}
@@ -29,34 +28,60 @@ class CanMigrationsCommand extends Command {
 
 	protected function params()
 	{
-		$userModel = Config::get('auth.model');
-		$userPrimaryKey = (new $userModel())->getKeyName();
+//		$userModel = Config::get('auth.model');
+//		$userPrimaryKey = (new $userModel())->getKeyName();
 
 		return [
 			'roleTable'          => Config::get('can.role_table'),
+			'roleCustomTable'    => Config::get('can.role_custom_table'),
 			'permissionTable'    => Config::get('can.permission_table'),
 			'rolePermissionTable' => Config::get('can.role_permission_table'),
 			'userRoleTable'       => Config::get('can.user_role_table'),
 			'userPermissionTable' => Config::get('can.user_permission_table'),
-			'userModel' => $userModel,
-			'userPrimaryKey' => $userPrimaryKey
+//			'userModel' => $userModel,
+//			'userPrimaryKey' => $userPrimaryKey
 		];
 	}
 
-	protected function writeMigrationFile()
+	protected function writeMigrationFiles()
 	{
-		$newFilePath = base_path("/database/migrations")."/".date('Y_m_d_His')."_create_can_tables.php";
+		$migrations = [
+			'resources/migrations.php' => '_create_can_tables.php',
+			'resources/migrations2.php' => '_add_group_ids_to_can_tables.php',
+			'resources/migrations3.php' => '_create_roles_custom_table.php',
+		];
 
-		$templatePath = substr(__DIR__, 0, -8) . 'resources/migrations.php';
 		extract($this->params());
-		$output = include $templatePath;
 
-		if (file_exists($newFilePath)) {
-			throw new \Exception('Migration file already exists');
+		$allFiles = scandir(base_path('/database/migrations'));
+
+		foreach ($migrations as $template => $migrationFile)
+		{
+			foreach ($allFiles as $file)
+			{
+				if (strpos($file, $migrationFile) !== false)
+				{
+					// Migration already exists. Do not create.
+					$this->info('Migration ' . $file . ' already exists. Skipped.');
+					continue 2;
+				}
+			}
+
+			$migrationFileWithDate = date('Y_m_d_His') . $migrationFile ;
+			$this->info('Creating migration '  . $migrationFileWithDate . ' from ' . $template);
+
+			$newFilePath = base_path('/database/migrations') . '/' . $migrationFileWithDate;
+			$templatePath = substr(__DIR__, 0, -8) . $template;
+			$output = include $templatePath;
+
+			$file = fopen($newFilePath, 'x');
+			fwrite($file, $output);
+			fclose($file);
+
+			$this->info('Migration created!');
+
+			sleep(1);	// Allow migration to increment.
 		}
 
-		$file = fopen($newFilePath, 'x');
-		fwrite($file, $output);
-		fclose($file);
 	}
 }
