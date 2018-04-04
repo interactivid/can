@@ -26,7 +26,7 @@ class Role {
 		}
 	}
 
-	public function attachPermissions(array $permissionSlugs)
+	public function attachPermissions(array $permissionSlugs, $groupId = 0)
 	{
 		SlugContainer::validateOrDie($this->slug, 'slug', 'The Role slug');
 
@@ -34,20 +34,21 @@ class Role {
 		$timeStr = Carbon::now()->toDateTimeString();
 		$data = [];
 
-		foreach($permissionSlugs as $slug)
+		foreach ($permissionSlugs as $slug)
 		{
 			SlugContainer::validateOrDie($slug, 'slug', 'The Permission slug');
 
 			$data[] = [
 				'roles_slug' => $this->slug,
 				'permissions_slug' => $slug,
+				'group_id' => $groupId,
 				'created_at' => $timeStr,
 				'updated_at' => $timeStr
 			];
 		}
 
 		// fails on duplicate entry
-		try{
+		try {
 			DB::table(Config::get('can.role_permission_table'))->insert($data);
 		} catch(\Exception $e) {
 			return false;
@@ -71,7 +72,7 @@ class Role {
 		// since users may have different sets of roles, scan for the users that
 		// don't have the new permissions and construct a bulk-insertable data set
 		$newInserts = [];
-		foreach($userIds as $currentId)
+		foreach ($userIds as $currentId)
 		{
 			$userItems = array_filter($existingPerms, function($v) use($currentId) {
 				return $v->user_id == $currentId;
@@ -252,11 +253,11 @@ class Role {
 		return $userClass::whereIn('id', $ids);
 	}
 
-	public function detachPermissions(array $permissionSlugs)
+	public function detachPermissions(array $permissionSlugs, $groupId = 0)
 	{
 		SlugContainer::validateOrDie($this->slug, 'slug', 'The Role slug');
 
-		if(count($permissionSlugs) === 0)
+		if (count($permissionSlugs) === 0)
 		{
 			return true;
 		}
@@ -266,16 +267,18 @@ class Role {
 
 		$query = DB::table(Config::get('can.role_permission_table'))
 			->where('roles_slug', $this->slug)
-			->where('permissions_slug', $first);
+			->where('permissions_slug', $first)
+			->where('group_id', $groupId);
 
-		foreach($permissionSlugs as $slug)
+		foreach ($permissionSlugs as $slug)
 		{
 			SlugContainer::validateOrDie($slug, 'slug', 'The Permission slug');
 
 			$roleSlug = $this->slug;
 			$query->orWhere(function($q) use($roleSlug, $slug) {
 				$q->where('roles_slug', $roleSlug)
-					->where('permissions_slug', $slug);
+					->where('permissions_slug', $slug)
+					->where('group_id', $groupId);
 			});
 		}
 
@@ -283,7 +286,7 @@ class Role {
 		{
 			$query->delete();
 		} catch(\Exception $e) {
-			throw new \Exception('Failed to detach permissions: '.$e->getMessage());
+			throw new \Exception('Failed to detach permissions: ' . $e->getMessage());
 		}
 
 		return true;
