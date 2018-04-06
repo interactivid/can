@@ -31,14 +31,17 @@ trait Can {
     /**
      * Accepts a single role slug, and attaches that role to the user. Does nothing
      * if the user is already attached to the role.
-     * 
+     *
      * @param $roleSlug
+     * @param null $groupId
      * @return null|object
      * @throws CanException
      */
-	public function attachRole($roleSlug)
-	{
-		$groupId = $this->getGroupId();
+    public function attachRole($roleSlug, $groupId = null)
+    {
+        if ($groupId === null) {
+            $groupId = $this->getGroupId();
+        }
 		echo $groupId;
 		$role = Role::single($roleSlug);
 		if (empty($role))
