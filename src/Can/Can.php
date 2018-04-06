@@ -28,14 +28,14 @@ trait Can {
 
 	private $rootGroup;
 
-	/**
-	 * Accepts a single role slug, and attaches that role to the user. Does nothing
-	 * if the user is already attached to the role.
-	 *
-	 * @param $roleSlug string
-	 *
-	 * @return bool
-	 */
+    /**
+     * Accepts a single role slug, and attaches that role to the user. Does nothing
+     * if the user is already attached to the role.
+     * 
+     * @param $roleSlug
+     * @return null|object
+     * @throws CanException
+     */
 	public function attachRole($roleSlug)
 	{
 		$groupId = $this->getGroupId();
@@ -72,7 +72,7 @@ trait Can {
 			'updated_at' => $timeStr
 		]);
 
-		$this->addPermissionsForRole($role, $timeStr);
+        $this->addPermissionsForRole($role, $timeStr, $groupId);
 		$this->invalidateRoleCache();
 
 		return $role;
@@ -84,18 +84,18 @@ trait Can {
 	 *
 	 * @param Role $role
 	 * @param      $timeStr
+     * @param      $groupId
 	 */
-	protected function addPermissionsForRole(Role $role, $timeStr)
+	protected function addPermissionsForRole(Role $role, $timeStr, $groupId)
 	{
-		$newPermissions = $this->uniquePermissionsForRole($role);
-
+		$newPermissions = $this->uniquePermissionsForRole($role, $groupId);
 		if(count($newPermissions))
 		{
-			$permData = array_map(function($v) use ($timeStr) {
+			$permData = array_map(function($v) use ($timeStr, $groupId) {
 				return [
 					'permissions_slug' => $v->slug,
 					'user_id' => $this->id,
-					'group_id' => $this->getGroupId(),
+					'group_id' => $groupId,
 					'created_at' => $timeStr,
 					'updated_at' => $timeStr
 				];
@@ -106,14 +106,14 @@ trait Can {
 		}
 	}
 
-	/**
-	 * Detach a role from the user
-	 *
-	 * @param $roleSlug
-	 *
-	 * @return bool
-	 * @throws CanException
-	 */
+    /**
+     * Detach a role from the user
+     *
+     * @param $roleSlug
+     * @param null $groupId
+     * @return bool
+     * @throws CanException
+     */
 	public function detachRole($roleSlug, $groupId = null)
 	{
 		if ($groupId === null)
@@ -436,28 +436,31 @@ trait Can {
 	 * b) have not been explicitly set on the user in the group or any parent
 	 *
 	 * @param $role
+     * @param $groupId
 	 *
 	 * @return array
 	 */
 	private function uniquePermissionsForRole(Role $role, $groupId)
 	{
 		// 1) get role permissions
-		$rolePermissions = $role->getPermissions();
+		$rolePermissions = $role->getPermissions($groupId);
 		$rolePermissionSlugs = array_column($rolePermissions, 'slug');
 
 		// 2) get user roles, excluding the provided role if it's there
-		$userRoles = array_filter($this->getRoles(), function($currRole) use($role) {
+		$userRoles = array_filter($this->getRoles($groupId), function($currRole) use($role) {
 			return $currRole->slug !== $role->slug;
 		});
 		$userRoleSlugs = array_column($userRoles, 'slug');
 
 		// 3) get all permissions associated with user roles above
 		$rolePermissionTable = Config::get('can.role_permission_table');
-		$otherRolePermissions = DB::table($rolePermissionTable)->whereIn('roles_slug', $userRoleSlugs)->get();
+        $otherRolePermissions = DB::table($rolePermissionTable)->whereIn('roles_slug', $userRoleSlugs)
+            ->where('group_id', $groupId)->get();
 		$otherRolePermissionSlugs = array_column($otherRolePermissions, 'permissions_slug');
 
 		// 4) get all permissions that have been explicitly set on the user
-		$explicitPermissions = DB::table(Config::get('can.user_permission_table'))->where('added_on_user', 1)->get();
+		$explicitPermissions = DB::table(Config::get('can.user_permission_table'))->where('added_on_user', 1)
+            ->where('group_id', $groupId)->get();
 		$explicitPermissionSlugs = array_column($explicitPermissions, 'permissions_slug');
 
 		// 5) all permission slugs not belonging to supplied permission

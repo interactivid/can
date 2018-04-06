@@ -388,18 +388,26 @@ class Role {
 		return count($permissions) > 0;
 	}
 
-	public function getPermissions()
+    /**
+     * Get permissions for the given slug and group
+     *
+     * @param $groupId
+     * @return array
+     */
+	public function getPermissions($groupId)
 	{
 		$permissionTable = Config::get('can.permission_table');
 		$rolePermissionTable = Config::get('can.role_permission_table');
 		$joinKeyFirst = $permissionTable.'.slug';
 		$joinKeySecond = $rolePermissionTable.'.permissions_slug';
 		$roleSlug = $rolePermissionTable.'.roles_slug';
+        $group = $rolePermissionTable.'.group_id';
 		$fields = $permissionTable.'.*';
 
 		$values = DB::table($permissionTable)
 			->join($rolePermissionTable,$joinKeyFirst, '=', $joinKeySecond)
 			->where($roleSlug,$this->slug)
+            ->where($group, $groupId)
 			->get([$fields]);
 
 		$permissions = [];
