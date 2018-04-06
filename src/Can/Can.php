@@ -179,7 +179,7 @@ trait Can {
 	{
 		$targetRole = Role::single($targetRoleSlug);
 		if (!$targetRole)
-			$targetRole = RoleCustom::single($targetRoleSlug, ['group_id' => $this->getRootGroup($groupId)])
+			$targetRole = RoleCustom::single($targetRoleSlug, ['group_id' => $this->getRootGroup($groupId)]);
 
 		$uniqueRolePermissions = $this->uniquePermissionsForRole($targetRole, $groupId);
 
