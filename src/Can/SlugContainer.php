@@ -7,7 +7,7 @@ use Illuminate\Database\Query\Builder;
 class SlugContainer {
 
 	public static $validationCharsets = [
-		'slug'        => 'a-z_\\-',
+		'slug'        => 'a-z_.\\-',
 		'name'        => 'a-zA-Z_\\- ',
 		'description' => "a-zA-Z_.,\\- '"
 	];
