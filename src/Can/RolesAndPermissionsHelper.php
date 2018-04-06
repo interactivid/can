@@ -230,7 +230,7 @@ trait RolesAndPermissionsHelper {
 	 */
 	public static function many($slugs, $params = [])
 	{
-		$groupId = self::getGroupId();
+//		$groupId = self::getGroupId();
 
 		$query = DB::table(self::$table);
 
