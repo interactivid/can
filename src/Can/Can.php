@@ -117,7 +117,7 @@ trait Can {
 	public function detachRole($roleSlug, $groupId = null)
 	{
 		if ($groupId === null)
-			$groupId = $this->getCurrentGroup()->id;
+			$groupId = $this->getGroupId();
 
 		// todo - does this weed out wildcards?
 		SlugContainer::validateOrDie($roleSlug, 'slug');
@@ -519,7 +519,7 @@ trait Can {
 	protected function normalizeGroupAndParents($groupId = null)
 	{
 		if ($groupId === null)
-			$groupId = $this->getCurrentGroup()->id;
+			$groupId = $this->getGroupId();
 
 		// Check if we've already retrieved the normalized group and parents and stored it.
 		if (isset($this->normalizedGroupAndParents[$groupId]))
@@ -543,7 +543,7 @@ trait Can {
 	protected function getRootGroup($groupId = null)
 	{
 		if ($groupId === null)
-			$groupId = $this->getCurrentGroup()->id;
+			$groupId = $this->getGroupId();
 
 		// Check if we've already retrieved the root group and stored it.
 		if (isset($this->rootGroup[$groupId]))
