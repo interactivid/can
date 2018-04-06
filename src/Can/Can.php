@@ -289,11 +289,12 @@ trait Can {
 	 *
 	 * @return bool
 	 */
-	public function can($permissions)
+	public function can($permissions, $groupId = null)
 	{
-		$groupId = $this->getGroupId();
+		if (!$groupId)
+			$groupId = $this->getGroupId();
 
-		$query = DB::table(Config::get('can.user_permission_table'))->where('user_id', $this->id)->where('group_id', $this->getGroupId());
+		$query = DB::table(Config::get('can.user_permission_table'))->where('user_id', $this->id)->where('group_id', $groupId);
 
 		$container = new SlugContainer($permissions);
 		$query = $container->buildSlugQuery($query, 'permissions_slug');

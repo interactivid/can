@@ -11,4 +11,9 @@ class RoleCustom extends Role {
 	use RolesAndPermissionsHelper;
 
 	protected static $table = 'roles_custom';
+
+	public function isCustom()
+	{
+		return true;
+	}
 }

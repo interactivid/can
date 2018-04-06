@@ -420,4 +420,9 @@ class Role {
 
 		return $permissions;
 	}
+
+	public function isCustom()
+	{
+		return false;
+	}
 }
