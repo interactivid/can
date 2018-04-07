@@ -54,19 +54,20 @@ class Role {
 			return false;
 		}
 
-		$this->updateAddPermissionsForRole($permissionSlugs, $timeStr);
+		$this->updateAddPermissionsForRole($permissionSlugs, $timeStr, $groupId);
 
 		return true;
 	}
 
 	// update users having this role with new permissions
-	protected function updateAddPermissionsForRole(array $permissionSlugs, $timeStr)
+	protected function updateAddPermissionsForRole(array $permissionSlugs, $timeStr, $groupId = 0)
 	{
-		$userIds = $this->userIds();
+		$userIds = $this->userIds($groupId);
 
 		// and get all the permissions for those users
 		$existingPerms = DB::table(Config::get('can.user_permission_table'))
 			->whereIn('user_id', $userIds)
+			->where('group_id', $groupId)
 			->get();
 
 		// since users may have different sets of roles, scan for the users that
@@ -75,13 +76,13 @@ class Role {
 		foreach ($userIds as $currentId)
 		{
 			$userItems = array_filter($existingPerms, function($v) use($currentId) {
-				return $v->user_id == $currentId;
+				return $v['user_id'] == $currentId['user_id'];
 			});
 
-			$userPerms = array_map(function($v) {return $v->permissions_slug;}, $userItems);
+			$userPerms = array_map(function($v) {return $v['permissions_slug'];}, $userItems);
 
 			$toInsert = array_intersect($permissionSlugs, $userPerms);
-			foreach($toInsert as $newPerm)
+			foreach ($toInsert as $newPerm)
 			{
 				$newInserts[] = [
 					'user_id' => $currentId,
@@ -217,10 +218,11 @@ class Role {
 		$query->delete();
 	}
 
-	protected function userIds()
+	protected function userIds($groupId = 0)
 	{
 		return DB::table(Config::get('can.user_role_table'))
 			->whereIn('roles_slug',[$this->slug])
+			->where('group_id', $groupId)
 			->get(['user_id']);
 	}
 
