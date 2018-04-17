@@ -42,7 +42,6 @@ trait Can {
         if ($groupId === null) {
             $groupId = $this->getGroupId();
         }
-		echo $groupId;
 		$role = Role::single($roleSlug);
 		if (empty($role))
 		{
