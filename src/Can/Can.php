@@ -42,6 +42,7 @@ trait Can {
         if ($groupId === null) {
             $groupId = $this->getGroupId();
         }
+
 		$role = Role::single($roleSlug);
 		if (empty($role))
 		{
@@ -61,7 +62,7 @@ trait Can {
 		// Note that if the user belongs to the role in a parent group, their role won't be added to the subgroup.
 		// If they're added to a subgroup, then a parent group, they'll have two records in the group chain.
 		// We may want to reconsider this design?
-		if ($this->is($roleSlug))
+		if ($this->is($roleSlug, $groupId))
 		{
 			return $role;
 		}
@@ -267,13 +268,16 @@ trait Can {
 	 *
 	 * @return bool
 	 */
-	public function is($roles)
+	public function is($roles, $groupId = null)
 	{
+		if ($groupId === null)
+			$groupId = $this->getGroupId();
+
 		// todo - possibly refactor to use getRoles? then have detachRole use this?
 
 		// Cascading roles need to be accounted for, i.e. if a user has a role somewhere in a parent, that role should cascade
 		// down to the current group.
-		$groupIds = $this->normalizeGroupAndParents($this->getGroupId());
+		$groupIds = $this->normalizeGroupAndParents($groupId);
 
 		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->whereIn('group_id', $groupIds);
 
