@@ -145,6 +145,14 @@ trait RolesAndPermissionsHelper {
 		return !is_array($args[0]);
 	}
 
+	private static function group_id($item)
+	{
+		if (!isset($item['group_id']))
+			return null;
+
+		return $item['group_id'];
+	}
+
 	private static function slug($item)
 	{
 		if(!isset($item['slug']) && count($item['slug']) > 0 )
