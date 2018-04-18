@@ -7,7 +7,7 @@ use Illuminate\Database\Query\Builder;
 class SlugContainer {
 
 	public static $validationCharsets = [
-		'slug'        => 'a-z_\\-',
+		'slug'        => 'a-z_.\\-',
 		'name'        => 'a-zA-Z_\\- ',
 		'description' => "a-zA-Z_.,\\- '"
 	];
@@ -90,7 +90,7 @@ class SlugContainer {
 		return $this->parsed['fullyQualified'];
 	}
 
-	public function buildSlugQuery(Builder $query, $slugColumn='slug')
+	public function buildSlugQuery(Builder $query, $slugColumn, $params = [])
 	{
 		if(!($this->hasFullyQualified() || $this->hasPartiallyQualified()))
 		{
@@ -117,6 +117,11 @@ class SlugContainer {
 			{
 				$query = $query->orWhere($slugColumn,'like',$partiallyQualified[$i]);
 			}
+		}
+
+		foreach ($params as $field => $value)
+		{
+			$query = $query->where($field, '=', $value);
 		}
 
 		return $query;

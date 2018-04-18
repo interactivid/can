@@ -26,7 +26,7 @@ class Role {
 		}
 	}
 
-	public function attachPermissions(array $permissionSlugs)
+	public function attachPermissions(array $permissionSlugs, $groupId = 0)
 	{
 		SlugContainer::validateOrDie($this->slug, 'slug', 'The Role slug');
 
@@ -34,53 +34,55 @@ class Role {
 		$timeStr = Carbon::now()->toDateTimeString();
 		$data = [];
 
-		foreach($permissionSlugs as $slug)
+		foreach ($permissionSlugs as $slug)
 		{
 			SlugContainer::validateOrDie($slug, 'slug', 'The Permission slug');
 
 			$data[] = [
 				'roles_slug' => $this->slug,
 				'permissions_slug' => $slug,
+				'group_id' => $groupId,
 				'created_at' => $timeStr,
 				'updated_at' => $timeStr
 			];
 		}
 
 		// fails on duplicate entry
-		try{
+		try {
 			DB::table(Config::get('can.role_permission_table'))->insert($data);
 		} catch(\Exception $e) {
 			return false;
 		}
 
-		$this->updateAddPermissionsForRole($permissionSlugs, $timeStr);
+		$this->updateAddPermissionsForRole($permissionSlugs, $timeStr, $groupId);
 
 		return true;
 	}
 
 	// update users having this role with new permissions
-	protected function updateAddPermissionsForRole(array $permissionSlugs, $timeStr)
+	protected function updateAddPermissionsForRole(array $permissionSlugs, $timeStr, $groupId = 0)
 	{
-		$userIds = $this->userIds();
+		$userIds = $this->userIds($groupId);
 
 		// and get all the permissions for those users
 		$existingPerms = DB::table(Config::get('can.user_permission_table'))
 			->whereIn('user_id', $userIds)
+			->where('group_id', $groupId)
 			->get();
 
 		// since users may have different sets of roles, scan for the users that
 		// don't have the new permissions and construct a bulk-insertable data set
 		$newInserts = [];
-		foreach($userIds as $currentId)
+		foreach ($userIds as $currentId)
 		{
 			$userItems = array_filter($existingPerms, function($v) use($currentId) {
-				return $v->user_id == $currentId;
+				return $v['user_id'] == $currentId['user_id'];
 			});
 
-			$userPerms = array_map(function($v) {return $v->permissions_slug;}, $userItems);
+			$userPerms = array_map(function($v) {return $v['permissions_slug'];}, $userItems);
 
 			$toInsert = array_intersect($permissionSlugs, $userPerms);
-			foreach($toInsert as $newPerm)
+			foreach ($toInsert as $newPerm)
 			{
 				$newInserts[] = [
 					'user_id' => $currentId,
@@ -216,10 +218,11 @@ class Role {
 		$query->delete();
 	}
 
-	protected function userIds()
+	protected function userIds($groupId = 0)
 	{
 		return DB::table(Config::get('can.user_role_table'))
 			->whereIn('roles_slug',[$this->slug])
+			->where('group_id', $groupId)
 			->get(['user_id']);
 	}
 
@@ -252,11 +255,11 @@ class Role {
 		return $userClass::whereIn('id', $ids);
 	}
 
-	public function detachPermissions(array $permissionSlugs)
+	public function detachPermissions(array $permissionSlugs, $groupId = 0)
 	{
 		SlugContainer::validateOrDie($this->slug, 'slug', 'The Role slug');
 
-		if(count($permissionSlugs) === 0)
+		if (count($permissionSlugs) === 0)
 		{
 			return true;
 		}
@@ -266,16 +269,18 @@ class Role {
 
 		$query = DB::table(Config::get('can.role_permission_table'))
 			->where('roles_slug', $this->slug)
-			->where('permissions_slug', $first);
+			->where('permissions_slug', $first)
+			->where('group_id', $groupId);
 
-		foreach($permissionSlugs as $slug)
+		foreach ($permissionSlugs as $slug)
 		{
 			SlugContainer::validateOrDie($slug, 'slug', 'The Permission slug');
 
 			$roleSlug = $this->slug;
 			$query->orWhere(function($q) use($roleSlug, $slug) {
 				$q->where('roles_slug', $roleSlug)
-					->where('permissions_slug', $slug);
+					->where('permissions_slug', $slug)
+					->where('group_id', $groupId);
 			});
 		}
 
@@ -283,7 +288,7 @@ class Role {
 		{
 			$query->delete();
 		} catch(\Exception $e) {
-			throw new \Exception('Failed to detach permissions: '.$e->getMessage());
+			throw new \Exception('Failed to detach permissions: ' . $e->getMessage());
 		}
 
 		return true;
@@ -385,18 +390,26 @@ class Role {
 		return count($permissions) > 0;
 	}
 
-	public function getPermissions()
+    /**
+     * Get permissions for the given slug and group
+     *
+     * @param $groupId
+     * @return array
+     */
+	public function getPermissions($groupId)
 	{
 		$permissionTable = Config::get('can.permission_table');
 		$rolePermissionTable = Config::get('can.role_permission_table');
 		$joinKeyFirst = $permissionTable.'.slug';
 		$joinKeySecond = $rolePermissionTable.'.permissions_slug';
 		$roleSlug = $rolePermissionTable.'.roles_slug';
+        $group = $rolePermissionTable.'.group_id';
 		$fields = $permissionTable.'.*';
 
 		$values = DB::table($permissionTable)
 			->join($rolePermissionTable,$joinKeyFirst, '=', $joinKeySecond)
 			->where($roleSlug,$this->slug)
+            ->where($group, $groupId)
 			->get([$fields]);
 
 		$permissions = [];
@@ -408,5 +421,10 @@ class Role {
 		}
 
 		return $permissions;
+	}
+
+	public function isCustom()
+	{
+		return false;
 	}
 }

@@ -20,24 +20,48 @@ trait Can {
 	private $userPermissions;
 
 	/**
-	 * Accepts a single role slug, and attaches that role to the user. Does nothing
-	 * if the user is already attached to the role.
-	 *
-	 * @param $roleSlug string
-	 *
-	 * @return bool
+	 * The user's current group.
 	 */
-	public function attachRole($roleSlug)
-	{
+	private $groupId;
+
+	private $normalizedGroupAndParents;
+
+	private $rootGroup;
+
+    /**
+     * Accepts a single role slug, and attaches that role to the user. Does nothing
+     * if the user is already attached to the role.
+     *
+     * @param $roleSlug
+     * @param null $groupId
+     * @return null|object
+     * @throws CanException
+     */
+    public function attachRole($roleSlug, $groupId = null)
+    {
+        if ($groupId === null) {
+            $groupId = $this->getGroupId();
+        }
 		$role = Role::single($roleSlug);
-		if(empty($role))
+		if (empty($role))
 		{
-			throw new CanException("There is no role with the slug: $roleSlug");
+			$rootGroup = $this->getRootGroup($groupId);
+
+			// All custom roles are defined on the root group, so make sure we're checking the right group.
+			$role = RoleCustom::single($roleSlug, ['group_id' => $this->getRootGroup($groupId)]);
+
+			if (empty($role))
+			{
+				throw new CanException("There is no role with the slug: $roleSlug");
+			}
 		}
 
 		$timeStr = Carbon::now()->toDateTimeString();
 
-		if($this->is($roleSlug))
+		// Note that if the user belongs to the role in a parent group, their role won't be added to the subgroup.
+		// If they're added to a subgroup, then a parent group, they'll have two records in the group chain.
+		// We may want to reconsider this design?
+		if ($this->is($roleSlug))
 		{
 			return $role;
 		}
@@ -45,11 +69,12 @@ trait Can {
 		DB::table(Config::get('can.user_role_table'))->insert([
 			'roles_slug' => $roleSlug,
 			'user_id' => $this->id,
+			'group_id' => $groupId,
 			'created_at' => $timeStr,
 			'updated_at' => $timeStr
 		]);
 
-		$this->addPermissionsForRole($role, $timeStr);
+        $this->addPermissionsForRole($role, $timeStr, $groupId);
 		$this->invalidateRoleCache();
 
 		return $role;
@@ -61,17 +86,18 @@ trait Can {
 	 *
 	 * @param Role $role
 	 * @param      $timeStr
+     * @param      $groupId
 	 */
-	protected function addPermissionsForRole(Role $role, $timeStr)
+	protected function addPermissionsForRole(Role $role, $timeStr, $groupId)
 	{
-		$newPermissions = $this->uniquePermissionsForRole($role);
-
+		$newPermissions = $this->uniquePermissionsForRole($role, $groupId);
 		if(count($newPermissions))
 		{
-			$permData = array_map(function($v) use ($timeStr) {
+			$permData = array_map(function($v) use ($timeStr, $groupId) {
 				return [
 					'permissions_slug' => $v->slug,
 					'user_id' => $this->id,
+					'group_id' => $groupId,
 					'created_at' => $timeStr,
 					'updated_at' => $timeStr
 				];
@@ -82,30 +108,33 @@ trait Can {
 		}
 	}
 
-	/**
-	 * Detach a role from the user
-	 *
-	 * @param $roleSlug
-	 *
-	 * @return bool
-	 * @throws CanException
-	 */
-	public function detachRole($roleSlug)
+    /**
+     * Detach a role from the user
+     *
+     * @param $roleSlug
+     * @param null $groupId
+     * @return bool
+     * @throws CanException
+     */
+	public function detachRole($roleSlug, $groupId = null)
 	{
+		if ($groupId === null)
+			$groupId = $this->getGroupId();
+
 		// todo - does this weed out wildcards?
 		SlugContainer::validateOrDie($roleSlug, 'slug');
 
 		// make sure the role to detach is among the attached roles
-		$allRoleSlugs = $this->slugsFor( $this->getRoles() );
+		$allRoleSlugs = $this->slugsFor( $this->getRoles($groupId) );
 
-		if(!in_array($roleSlug, $allRoleSlugs, TRUE))
+		if (!in_array($roleSlug, $allRoleSlugs, TRUE))
 		{
 			return false;
 		}
 
-		$this->doDetachRole($roleSlug);
+		$this->doDetachRole($roleSlug, $groupId);
 
-		$this->detachRolePermissions($roleSlug);
+		$this->detachRolePermissions($roleSlug, $groupId);
 
 		return true;
 	}
@@ -127,11 +156,12 @@ trait Can {
 		}, $rolesOrPermissions);
 	}
 
-	protected function doDetachRole($roleSlug)
+	protected function doDetachRole($roleSlug, $groupId)
 	{
 		DB::table(Config::get('can.user_role_table'))
 			->where('user_id', $this->id)
 			->where('roles_slug', $roleSlug)
+			->where('group_id', $groupId)
 			->delete();
 
 		$this->invalidateRoleCache();
@@ -147,21 +177,25 @@ trait Can {
 	 *
 	 * @throws CanException
 	 */
-	protected function detachRolePermissions($targetRoleSlug)
+	protected function detachRolePermissions($targetRoleSlug, $groupId)
 	{
 		$targetRole = Role::single($targetRoleSlug);
-		$uniqueRolePermissions = $this->uniquePermissionsForRole($targetRole);
+		if (!$targetRole)
+			$targetRole = RoleCustom::single($targetRoleSlug, ['group_id' => $this->getRootGroup($groupId)]);
+
+		$uniqueRolePermissions = $this->uniquePermissionsForRole($targetRole, $groupId);
 
 		$uniqueSlugs = array_map(function($o) {
 			return $o->slug;
 		}, $uniqueRolePermissions);
 
 		// then delete what remains
-		if(count($uniqueRolePermissions) > 0)
+		if (count($uniqueRolePermissions) > 0)
 		{
 			DB::table(Config::get('can.user_permission_table'))
 				->where('user_id', $this->id)
-				->whereIn('permissions_slug',$uniqueSlugs)
+				->where('group_id', $groupId)
+				->whereIn('permissions_slug', $uniqueSlugs)
 				->delete();
 
 			$this->invalidatePermissionCache();
@@ -182,7 +216,7 @@ trait Can {
 	{
 		$exists = DB::table(Config::get('can.permission_table'))->where('slug', $permissionSlug)->count();
 
-		if(count($exists))
+		if (count($exists))
 		{
 			DB::table(Config::get('can.user_permission_table'))->insert([
 				'user_id' => $this->id,
@@ -198,7 +232,6 @@ trait Can {
 		return false;
 	}
 
-
 	/**
 	 * Detach a permission from the user. This can only be called for permissions that were set explicitly
 	 * on the user using <code>attachPermission()</code> and not for implicit permissions that are
@@ -213,11 +246,12 @@ trait Can {
 		// todo - allow a comma-separated list?
 		$affected = DB::table(Config::get('can.user_permission_table'))
 			->where('user_id', $this->id)
+			->where('group_id', $this->getGroupId())
 			->where('permissions_slug', $permissionSlug)
 			->where('added_on_user', 1)
 			->delete();
 
-		if($affected)
+		if ($affected)
 		{
 			$this->invalidatePermissionCache();
 		}
@@ -236,7 +270,12 @@ trait Can {
 	public function is($roles)
 	{
 		// todo - possibly refactor to use getRoles? then have detachRole use this?
-		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id);
+
+		// Cascading roles need to be accounted for, i.e. if a user has a role somewhere in a parent, that role should cascade
+		// down to the current group.
+		$groupIds = $this->normalizeGroupAndParents($this->getGroupId());
+
+		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->whereIn('group_id', $groupIds);
 
 		$container = new SlugContainer($roles);
 		$query = $container->buildSlugQuery($query, 'roles_slug');
@@ -252,9 +291,12 @@ trait Can {
 	 *
 	 * @return bool
 	 */
-	public function can($permissions)
+	public function can($permissions, $groupId = null)
 	{
-		$query = DB::table(Config::get('can.user_permission_table'))->where('user_id',$this->id);
+		if (!$groupId)
+			$groupId = $this->getGroupId();
+
+		$query = DB::table(Config::get('can.user_permission_table'))->where('user_id', $this->id)->where('group_id', $groupId);
 
 		$container = new SlugContainer($permissions);
 		$query = $container->buildSlugQuery($query, 'permissions_slug');
@@ -268,16 +310,20 @@ trait Can {
 	 *
 	 * @return array
 	 */
-	public function getRoles()
+	public function getRoles($groupId)
 	{
-		if(!empty($this->userRoles))
+//		if ($groupId === null)
+//			$groupId = $this->getCurrentGroup()->id;
+
+		if (!empty($this->userRoles))
 		{
 			return $this->userRoles;
 		}
 
 		$roleTable = Config::get('can.role_table');
+		$roleCustomTable = Config::get('can.role_custom_table');
 		$userRoleTable = Config::get('can.user_role_table');
-
+/*
 		$queryParams = [
 			'joinKeyFirst' => $roleTable.'.slug',
 			'joinKeySecond' => $userRoleTable.'.roles_slug',
@@ -291,6 +337,35 @@ trait Can {
 					->where($queryParams['userIdKey'], '=', $queryParams['userId']);
 			})
 			->get([$roleTable.'.*']);
+
+		$sql = "SELECT r.slug, r.name, r.description, ur.group_id
+				FROM " . $roleTable . " r
+				INNER JOIN " . $userRoleTable . " ur ON " . $roleTable . ".slug = " . $userRoleTable . ".roles_slug
+				WHERE " . $userRoleTable . ".user_id = ? AND group_id IN (?)
+				UNION
+				SELECT rc.slug, rc.name, rc.description, ur.group_id
+				FROM " . $roleCustomTable . " rc
+				INNER JOIN " . $userRoleTable . " ur ON " . $roleCustomTable . ".slug = " . $userRoleTable . ".roles_slug
+				WHERE " . $userRoleTable . ".user_id = ? AND group_id IN (?)
+		";
+*/
+		$groupAndParents = $this->normalizeGroupAndParents($groupId);
+
+		$primary = DB::table($roleTable)
+					->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
+					->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
+					->where($userRoleTable . '.user_id', '=', $this->id)
+					->whereIn($userRoleTable . '.group_id', $groupAndParents)
+					->get();
+
+		$custom = DB::table($roleCustomTable)
+					->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
+					->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
+					->where($userRoleTable . '.user_id', '=', $this->id)
+					->whereIn($userRoleTable . '.group_id', $groupAndParents)
+					->get();
+
+		$data = array_merge($primary, $custom);
 
 		$this->userRoles = array_map(function($v) {
 			return new Role((array) $v);
@@ -310,11 +385,13 @@ trait Can {
 	 *
 	 * @return array
 	 */
-	public function getPermissions($filter='all')
+	public function getPermissions($filter = 'all')
 	{
+		$groupId = $this->getGroupId();
+
 		// the permission cache contains all the user's permissions, and does not contain enough information
 		// to execute the 'role' or 'explicit' filters.
-		if($filter == 'all' && !empty($this->userPermissions))
+		if ($filter == 'all' && !empty($this->userPermissions))
 		{
 			return $this->userPermissions;
 		}
@@ -358,32 +435,35 @@ trait Can {
 
 	/**
 	 * Returns the permissions associated with the provided role that are:
-	 * a) not provided by any other role that is currently attached to the user and
-	 * b) have not been explicitly set on the user
+	 * a) not provided by any other role that is currently attached to the user in the group or any parent and
+	 * b) have not been explicitly set on the user in the group or any parent
 	 *
 	 * @param $role
+     * @param $groupId
 	 *
 	 * @return array
 	 */
-	private function uniquePermissionsForRole(Role $role)
+	private function uniquePermissionsForRole(Role $role, $groupId)
 	{
 		// 1) get role permissions
-		$rolePermissions = $role->getPermissions();
+		$rolePermissions = $role->getPermissions($groupId);
 		$rolePermissionSlugs = array_column($rolePermissions, 'slug');
 
-		// 2) get user roles, exluding the provided role if it's there
-		$userRoles = array_filter($this->getRoles(), function($currRole) use($role) {
+		// 2) get user roles, excluding the provided role if it's there
+		$userRoles = array_filter($this->getRoles($groupId), function($currRole) use($role) {
 			return $currRole->slug !== $role->slug;
 		});
 		$userRoleSlugs = array_column($userRoles, 'slug');
 
 		// 3) get all permissions associated with user roles above
 		$rolePermissionTable = Config::get('can.role_permission_table');
-		$otherRolePermissions = DB::table($rolePermissionTable)->whereIn('roles_slug', $userRoleSlugs)->get();
+        $otherRolePermissions = DB::table($rolePermissionTable)->whereIn('roles_slug', $userRoleSlugs)
+            ->where('group_id', $groupId)->get();
 		$otherRolePermissionSlugs = array_column($otherRolePermissions, 'permissions_slug');
 
 		// 4) get all permissions that have been explicitly set on the user
-		$explicitPermissions = DB::table(Config::get('can.user_permission_table'))->where('added_on_user', 1)->get();
+		$explicitPermissions = DB::table(Config::get('can.user_permission_table'))->where('added_on_user', 1)
+            ->where('group_id', $groupId)->get();
 		$explicitPermissionSlugs = array_column($explicitPermissions, 'permissions_slug');
 
 		// 5) all permission slugs not belonging to supplied permission
@@ -410,4 +490,78 @@ trait Can {
 		$this->userPermissions = null;
 	}
 
+	/**
+	 * Return the group id. This is made for InteractiVid's own user/group middleware that gets stored in the session.
+	 * However, we're leaving room open to make it flexible enough to work with other user/group implementations.
+	 */
+	protected function getGroupId()
+	{
+		if (isset($this->groupId))
+			return $this->groupId;
+
+		$this->groupId = 0;
+
+		$userClass = Config::get('auth.providers.users.model');
+
+		if (method_exists($userClass, 'getCurrentGroup'))
+		{
+			$group = $userClass::getCurrentGroup();
+			$this->groupId = isset($group->id) ? $group->id : 0;
+		}
+
+		return $this->groupId;
+	}
+
+
+	/**
+	 * Retrieve a single-level array of the group and its parents. This relies on the InteractiVid Group model.
+	 * Nothing will be returned if this model doesn't exist.
+	 * TODO: Bring the group management into interactivid/can?
+	 */
+	protected function normalizeGroupAndParents($groupId = null)
+	{
+		if ($groupId === null)
+			$groupId = $this->getGroupId();
+
+		// Check if we've already retrieved the normalized group and parents and stored it.
+		if (isset($this->normalizedGroupAndParents[$groupId]))
+			return $this->normalizedGroupAndParents[$groupId];
+
+		$groupClass = 'Demovisor\Models\Group';
+		$groupIds = [$groupId];
+		$parents = [];
+		if (method_exists($groupClass, 'normalizeParents'))
+		{
+			$group = $groupClass::where('id', $groupId)->first();
+			if ($group)
+				$parents = $group->normalizeParents();
+
+			$this->normalizedGroupAndParents[$groupId] = array_merge($groupIds, array_keys($parents));
+			return $this->normalizedGroupAndParents[$groupId];
+		}
+		return null;
+	}
+
+	protected function getRootGroup($groupId = null)
+	{
+		if ($groupId === null)
+			$groupId = $this->getGroupId();
+
+		// Check if we've already retrieved the root group and stored it.
+		if (isset($this->rootGroup[$groupId]))
+			return $this->rootGroup[$groupId];
+
+		$groupClass = 'Demovisor\Models\Group';
+		$groupIds = [$groupId];
+		if (method_exists($groupClass, 'getRootGroup'))
+		{
+			$group = $groupClass::where('id', $groupId)->first();
+			if ($group)
+			{
+				$this->rootGroup[$groupId] = $group->getRootGroup();
+				return $this->rootGroup[$groupId];
+			}
+		}
+		return null;
+	}
 }

@@ -2,6 +2,7 @@
 
 namespace interactivid\Can;
 
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -144,6 +145,14 @@ trait RolesAndPermissionsHelper {
 		return !is_array($args[0]);
 	}
 
+	private static function group_id($item)
+	{
+		if (!isset($item['group_id']))
+			return null;
+
+		return $item['group_id'];
+	}
+
 	private static function slug($item)
 	{
 		if(!isset($item['slug']) && count($item['slug']) > 0 )
@@ -206,7 +215,7 @@ trait RolesAndPermissionsHelper {
 	 * @return object|null
 	 * @throws CanException
 	 */
-	public static function single($slug)
+	public static function single($slug, $params = [])
 	{
 		// leave full validation for query
 		if(!is_string($slug))
@@ -216,7 +225,7 @@ trait RolesAndPermissionsHelper {
 			throw new CanException('single() does not accept wildcards (*)');
 		}
 
-		$result = static::many([$slug]);
+		$result = static::many([$slug], $params);
 		return count($result) > 0 ? new static(static::toCanArray($result[0])) : null;
 	}
 
@@ -227,12 +236,14 @@ trait RolesAndPermissionsHelper {
 	 *
 	 * @return array
 	 */
-	public static function many($slugs)
+	public static function many($slugs, $params = [])
 	{
+//		$groupId = self::getGroupId();
+
 		$query = DB::table(self::$table);
 
 		$container = new SlugContainer($slugs);
-		$query = $container->buildSlugQuery($query);
+		$query = $container->buildSlugQuery($query, 'slug', $params);
 
 		$hits = $query->distinct()->get();
 
@@ -273,4 +284,18 @@ trait RolesAndPermissionsHelper {
 			throw new CanException('Got some non-object, non-array thing I can\'t handle');
 	}
 
+	protected static function getGroupId()
+	{
+		$groupId = 0;
+
+		$userClass = Config::get('auth.providers.users.model');
+
+		if (method_exists($userClass, 'getCurrentGroup'))
+		{
+			$group = $userClass::getCurrentGroup();
+			$groupId = isset($group->id) ? $group->id : 0;
+		}
+
+		return $groupId;
+	}
 }
