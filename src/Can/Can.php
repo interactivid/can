@@ -62,7 +62,7 @@ trait Can {
 		// Note that if the user belongs to the role in a parent group, their role won't be added to the subgroup.
 		// If they're added to a subgroup, then a parent group, they'll have two records in the group chain.
 		// We may want to reconsider this design?
-		if ($this->is($roleSlug, $groupId))
+		if ($this->is($roleSlug, $groupId, true))
 		{
 			return $role;
 		}
@@ -268,7 +268,7 @@ trait Can {
 	 *
 	 * @return bool
 	 */
-	public function is($roles, $groupId = null)
+	public function is($roles, $groupId = null, $onlyCurrentGroup = false)
 	{
 		if ($groupId === null)
 			$groupId = $this->getGroupId();
@@ -279,7 +279,10 @@ trait Can {
 		// down to the current group.
 		$groupIds = $this->normalizeGroupAndParents($groupId);
 
-		$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->whereIn('group_id', $groupIds);
+		if ($onlyCurrentGroup === true)
+			$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->where('group_id', $groupId);
+		else
+			$query = DB::table(Config::get('can.user_role_table'))->where('user_id', $this->id)->whereIn('group_id', $groupIds);
 
 		$container = new SlugContainer($roles);
 		$query = $container->buildSlugQuery($query, 'roles_slug');
@@ -314,7 +317,7 @@ trait Can {
 	 *
 	 * @return array
 	 */
-	public function getRoles($groupId)
+	public function getRoles($groupId, $onlyCurrentGroup = false)
 	{
 //		if ($groupId === null)
 //			$groupId = $this->getCurrentGroup()->id;
@@ -355,19 +358,38 @@ trait Can {
 */
 		$groupAndParents = $this->normalizeGroupAndParents($groupId);
 
-		$primary = DB::table($roleTable)
-					->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
-					->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
-					->where($userRoleTable . '.user_id', '=', $this->id)
-					->whereIn($userRoleTable . '.group_id', $groupAndParents)
-					->get();
+		if ($onlyCurrentGroup === true)
+		{
+			$primary = DB::table($roleTable)
+						->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
+						->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
+						->where($userRoleTable . '.user_id', '=', $this->id)
+						->where($userRoleTable . '.group_id', $groupId)
+						->get();
 
-		$custom = DB::table($roleCustomTable)
-					->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
-					->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
-					->where($userRoleTable . '.user_id', '=', $this->id)
-					->whereIn($userRoleTable . '.group_id', $groupAndParents)
-					->get();
+			$custom = DB::table($roleCustomTable)
+						->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
+						->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
+						->where($userRoleTable . '.user_id', '=', $this->id)
+						->where($userRoleTable . '.group_id', $groupId)
+						->get();
+		}
+		else
+		{
+			$primary = DB::table($roleTable)
+						->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
+						->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
+						->where($userRoleTable . '.user_id', '=', $this->id)
+						->whereIn($userRoleTable . '.group_id', $groupAndParents)
+						->get();
+
+			$custom = DB::table($roleCustomTable)
+						->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
+						->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
+						->where($userRoleTable . '.user_id', '=', $this->id)
+						->whereIn($userRoleTable . '.group_id', $groupAndParents)
+						->get();
+		}
 
 		$data = array_merge($primary, $custom);
 
