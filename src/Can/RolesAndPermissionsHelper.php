@@ -256,7 +256,7 @@ trait RolesAndPermissionsHelper {
 		return self::hitsToObjects($hits);
 	}
 
-	protected static function hitsToObjects(array $hits)
+	protected static function hitsToObjects($hits)
 	{
 		$results = [];
 		foreach($hits as $hit)
