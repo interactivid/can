@@ -39,7 +39,7 @@ class SlugContainer {
 		}
 		else
 		{
-			if ( count($str) > 254 )
+			if ( strlen($str) > 254 )
 			{
 				throw new CanException("$placeholder must be less than 255 characters");
 			}
