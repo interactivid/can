@@ -358,38 +358,39 @@ trait Can {
 */
 		$groupAndParents = $this->normalizeGroupAndParents($groupId);
 
-		if ($onlyCurrentGroup === true)
-		{
-			$primary = DB::table($roleTable)
-						->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
-						->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
-						->where($userRoleTable . '.user_id', '=', $this->id)
-						->where($userRoleTable . '.group_id', $groupId)
-						->get();
+        if ($onlyCurrentGroup === true) {
+            $primary = DB::table($roleTable)
+                ->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
+                ->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
+                ->where($userRoleTable . '.user_id', '=', $this->id)
+                ->where($userRoleTable . '.group_id', $groupId)
+                ->get()
+                ->toArray();
 
-			$custom = DB::table($roleCustomTable)
-						->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
-						->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
-						->where($userRoleTable . '.user_id', '=', $this->id)
-						->where($userRoleTable . '.group_id', $groupId)
-						->get();
-		}
-		else
-		{
-			$primary = DB::table($roleTable)
-						->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
-						->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
-						->where($userRoleTable . '.user_id', '=', $this->id)
-						->whereIn($userRoleTable . '.group_id', $groupAndParents)
-						->get();
+            $custom = DB::table($roleCustomTable)
+                ->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
+                ->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
+                ->where($userRoleTable . '.user_id', '=', $this->id)
+                ->where($userRoleTable . '.group_id', $groupId)
+                ->get()
+                ->toArray();
+        } else {
+            $primary = DB::table($roleTable)
+                ->join($userRoleTable, $roleTable . '.slug', '=', $userRoleTable . '.roles_slug')
+                ->select(DB::raw($roleTable . '.slug,' . $roleTable . '.name,' . $roleTable . '.description,' . $userRoleTable . '.group_id'))
+                ->where($userRoleTable . '.user_id', '=', $this->id)
+                ->whereIn($userRoleTable . '.group_id', $groupAndParents)
+                ->get()
+                ->toArray();
 
-			$custom = DB::table($roleCustomTable)
-						->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
-						->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
-						->where($userRoleTable . '.user_id', '=', $this->id)
-						->whereIn($userRoleTable . '.group_id', $groupAndParents)
-						->get();
-		}
+            $custom = DB::table($roleCustomTable)
+                ->join($userRoleTable, $roleCustomTable . '.slug', '=', $userRoleTable . '.roles_slug')
+                ->select(DB::raw('slug, name, description, ' . $userRoleTable . '.group_id'))
+                ->where($userRoleTable . '.user_id', '=', $this->id)
+                ->whereIn($userRoleTable . '.group_id', $groupAndParents)
+                ->get()
+                ->toArray();
+        }
 
 		$data = array_merge($primary, $custom);
 
@@ -484,12 +485,12 @@ trait Can {
 		// 3) get all permissions associated with user roles above
 		$rolePermissionTable = Config::get('can.role_permission_table');
         $otherRolePermissions = DB::table($rolePermissionTable)->whereIn('roles_slug', $userRoleSlugs)
-            ->where('group_id', $groupId)->get();
+            ->where('group_id', $groupId)->get()->toArray();
 		$otherRolePermissionSlugs = array_column($otherRolePermissions, 'permissions_slug');
 
 		// 4) get all permissions that have been explicitly set on the user
 		$explicitPermissions = DB::table(Config::get('can.user_permission_table'))->where('added_on_user', 1)
-            ->where('group_id', $groupId)->get();
+            ->where('group_id', $groupId)->get()->toArray();
 		$explicitPermissionSlugs = array_column($explicitPermissions, 'permissions_slug');
 
 		// 5) all permission slugs not belonging to supplied permission
