@@ -1,5 +1,5 @@
 {
-  "name": "rayromero3186/can",
+  "name": "interactivid/can",
   "description": "In development",
   "keywords": [],
   "license": "MIT",
@@ -20,7 +20,7 @@
   },
   "autoload": {
     "psr-4": {
-      "rayromero3186\\Can\\": "src/Can"
+      "interactivid\\Can\\": "src/Can"
     }
   },
   "extra": {
