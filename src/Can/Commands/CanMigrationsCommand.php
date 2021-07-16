@@ -11,6 +11,11 @@ class CanMigrationsCommand extends Command {
 	protected $name = 'can:migration';
 
 	protected $description = 'Create migrations for the Can package';
+	
+	public function handle()
+    	{
+        	$this->fire();
+    	}
 
 	public function fire()
 	{
